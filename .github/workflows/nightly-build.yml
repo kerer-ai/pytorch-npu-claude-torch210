@@ -26,7 +26,24 @@ jobs:
             gcc \
             g++ \
             git \
-            patchelf
+            patchelf \
+            ccache
+
+      - name: Set up ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-ubuntu22-v7.2.0-pytorch2.1.0-${{ github.run_id }}
+          restore-keys: |
+            ccache-ubuntu22-v7.2.0-pytorch2.1.0-
+
+      - name: Configure ccache
+        run: |
+          ccache --max-size=2G
+          ccache --zero-stats
+          echo "CC=ccache gcc" >> "$GITHUB_ENV"
+          echo "CXX=ccache g++" >> "$GITHUB_ENV"
+          echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
 
       - name: Install Python dependencies
         run: |
@@ -67,6 +84,14 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "#### Generated wheels" >> "$GITHUB_STEP_SUMMARY"
           ls dist/*.whl | while read whl; do echo "- \`$(basename $whl)\`"; done >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report ccache stats
+        if: always()
+        run: |
+          echo "#### ccache stats" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ccache --show-stats >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload wheel artifact
         if: success()
