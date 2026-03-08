@@ -36,7 +36,8 @@ jobs:
 
       - name: Clone Ascend/pytorch (with submodules)
         run: |
-          git clone --depth=1 --recurse-submodules \
+          git clone --depth=1 --branch v7.2.0-pytorch2.1.0 \
+            --recurse-submodules \
             https://github.com/Ascend/pytorch.git ascend_pytorch
 
       - name: Record Ascend/pytorch commit
@@ -56,12 +57,13 @@ jobs:
 
       - name: Build wheel
         run: |
+          set -o pipefail
           cd ascend_pytorch
           export DISABLE_INSTALL_TORCHAIR=TRUE
           export DISABLE_RPC_FRAMEWORK=TRUE
           export BUILD_WITHOUT_SHA=1
           python setup.py build bdist_wheel 2>&1 | tee ../build.log
-          echo "| Build result | ✅ Success |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Build result | Success |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "#### Generated wheels" >> "$GITHUB_STEP_SUMMARY"
           ls dist/*.whl | while read whl; do echo "- \`$(basename $whl)\`"; done >> "$GITHUB_STEP_SUMMARY"
