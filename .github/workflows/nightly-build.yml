@@ -1,0 +1,83 @@
+name: Build pytorch-npu (PyTorch 2.1.0+cpu)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            gcc \
+            g++ \
+            git \
+            patchelf
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install "torch==2.1.0+cpu" --index-url https://download.pytorch.org/whl/cpu
+          pip install pyyaml setuptools auditwheel
+
+      - name: Clone Ascend/pytorch (with submodules)
+        run: |
+          git clone --depth=1 --recurse-submodules \
+            https://github.com/Ascend/pytorch.git ascend_pytorch
+
+      - name: Record Ascend/pytorch commit
+        id: ascend_commit
+        run: |
+          COMMIT=$(git -C ascend_pytorch rev-parse HEAD)
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "### Build Info" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Key | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PyTorch version | 2.1.0+cpu |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Ascend/pytorch commit | \`$COMMIT\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build CANN stub library
+        run: |
+          bash ascend_pytorch/third_party/acl/libs/build_stub.sh
+
+      - name: Build wheel
+        run: |
+          cd ascend_pytorch
+          export DISABLE_INSTALL_TORCHAIR=TRUE
+          export DISABLE_RPC_FRAMEWORK=TRUE
+          export BUILD_WITHOUT_SHA=1
+          python setup.py build bdist_wheel 2>&1 | tee ../build.log
+          echo "| Build result | ✅ Success |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "#### Generated wheels" >> "$GITHUB_STEP_SUMMARY"
+          ls dist/*.whl | while read whl; do echo "- \`$(basename $whl)\`"; done >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload wheel artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytorch-npu-wheel
+          path: ascend_pytorch/dist/*.whl
+          retention-days: 7
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
